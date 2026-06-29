@@ -42,7 +42,12 @@ export default function SignInScreen() {
       await haptic.success();
       // Root gate navigates on the resulting auth state change.
     } catch (e) {
-      const msg = e instanceof ApiError ? e.message : 'Something went wrong. Try again.';
+      // ApiError = the server answered with an error (bad password, etc.).
+      // Anything else = the request never reached the server (it's down, the URL
+      // is wrong, or the device can't reach it).
+      const msg = e instanceof ApiError
+        ? e.message
+        : "Can't reach the server. Make sure the API is running and the URL is reachable from this device.";
       setError(msg);
       await haptic.error();
     } finally {

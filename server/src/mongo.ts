@@ -23,7 +23,12 @@ export function getDb(): Promise<Db> {
       const db = client.db(ENV.dbName);
       await ensureIndexes(db);
       return db;
-    })();
+    })().catch((err) => {
+      // Don't cache a rejected connection — let the next request retry instead
+      // of permanently failing once Atlas was briefly unreachable.
+      dbPromise = null;
+      throw err;
+    });
   }
   return dbPromise;
 }
