@@ -1,0 +1,66 @@
+{
+  "expo": {
+    "name": "QuestPic",
+    "slug": "questpic",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "questpic",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tirepro.questpic",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "QuestPic drops a geo-pin on the milestones you complete.",
+        "NSCameraUsageDescription": "QuestPic captures photos for your adventure journal.",
+        "NSPhotoLibraryUsageDescription": "QuestPic adds photos from your library to completed quests."
+      }
+    },
+    "android": {
+      "package": "com.tirepro.questpic",
+      "versionCode": 1,
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#000000"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "QuestPic adds photos from your library to completed quests.",
+          "cameraPermission": "QuestPic captures photos for your adventure journal."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "QuestPic drops a geo-pin on the milestones you complete."
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

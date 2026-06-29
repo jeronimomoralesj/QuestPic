@@ -1,0 +1,19 @@
+# Expo / RN
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+ios/
+android/
+
+# Misc
+*.log
+.DS_Store
+
+# Env (keep .env.example committed)
+.env
+.env*.local
+server/.env
