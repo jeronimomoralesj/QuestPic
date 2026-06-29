@@ -12,7 +12,13 @@
 
 import type { BucketItem, BucketList } from '@/db/types';
 
-const BASE = (process.env.EXPO_PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
+/**
+ * Production API URL, baked in so release builds "just work" with no env wiring.
+ * Local dev overrides this via `.env` (EXPO_PUBLIC_API_BASE_URL=http://localhost:4000).
+ */
+const DEFAULT_API_BASE_URL = 'https://quest-pic.vercel.app';
+
+const BASE = (process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '');
 
 let authToken: string | null = null;
 export function setAuthToken(token: string | null): void {
