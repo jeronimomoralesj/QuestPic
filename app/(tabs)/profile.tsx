@@ -6,8 +6,8 @@
  * the vault. The crew section shows the simulated peer environment.
  */
 
-import React from 'react';
-import { View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { Screen } from '@/ui/Screen';
 import { Text } from '@/ui/Text';
 import { PressableScale } from '@/ui/Pressable';
@@ -17,7 +17,9 @@ import { useTheme, usePalette } from '@/theme/ThemeProvider';
 import { THEMES, THEME_ORDER, RADIUS, SPACING, type ThemeName } from '@/theme/themes';
 import { useVault } from '@/state/VaultProvider';
 import { useAuth } from '@/auth/AuthProvider';
+import { api } from '@/sync/client';
 import { relativeTime } from '@/utils/time';
+import type { FriendInvite } from '@/sync/client';
 import type { SyncOutcome } from '@/sync/engine';
 
 export default function ProfileScreen() {
@@ -57,6 +59,9 @@ export default function ProfileScreen() {
           </Card>
         </>
       ) : null}
+
+      {/* Friend requests */}
+      {user && <FriendRequests />}
 
       {/* Stats */}
       <Spacer size={SPACING.xl} />
@@ -252,6 +257,105 @@ function ThemeSwatch({ name, active, onPress }: { name: ThemeName; active: boole
         ) : null}
       </View>
     </PressableScale>
+  );
+}
+
+function FriendRequests() {
+  const palette = usePalette();
+  const [invites, setInvites] = useState<FriendInvite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actioning, setActioning] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.getPendingInvites();
+      setInvites(res.invites);
+    } catch {
+      // Silently fail — user might be offline or not synced yet.
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const accept = async (invite: FriendInvite) => {
+    setActioning(invite.id);
+    try {
+      await api.acceptFriendInvite(invite.id);
+      await haptic.success();
+      setInvites((prev) => prev.filter((i) => i.id !== invite.id));
+    } catch { await haptic.warning(); }
+    finally { setActioning(null); }
+  };
+
+  const decline = async (invite: FriendInvite) => {
+    setActioning(invite.id);
+    try {
+      await api.declineFriendInvite(invite.id);
+      await haptic.select();
+      setInvites((prev) => prev.filter((i) => i.id !== invite.id));
+    } catch { await haptic.warning(); }
+    finally { setActioning(null); }
+  };
+
+  if (loading) {
+    return (
+      <>
+        <Spacer size={SPACING.xl} />
+        <Eyebrow>Friend Requests</Eyebrow>
+        <Spacer size={SPACING.md} />
+        <ActivityIndicator color={palette.accent} />
+      </>
+    );
+  }
+
+  if (invites.length === 0) return null;
+
+  return (
+    <>
+      <Spacer size={SPACING.xl} />
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <Eyebrow tone="accent">Friend Requests · {invites.length}</Eyebrow>
+      </View>
+      <Spacer size={SPACING.md} />
+      <Card bordered style={{ borderColor: palette.accent }}>
+        {invites.map((invite, i) => {
+          const busy = actioning === invite.id;
+          return (
+            <View key={invite.id}>
+              {i > 0 && <Divider />}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.md }}>
+                <GlyphChip glyph={invite.requesterAvatar || '◈'} size={40} tone="accent" />
+                <View style={{ flex: 1 }}>
+                  <Text variant="label">{invite.requesterName}</Text>
+                  <Text variant="caption" tone="textFaint">
+                    {invite.requesterHandle} · {relativeTime(invite.createdAt)}
+                  </Text>
+                </View>
+                {busy ? (
+                  <ActivityIndicator size="small" color={palette.accent} />
+                ) : (
+                  <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+                    <PressableScale onPress={() => void accept(invite)} hapticOnPress="none" scaleTo={0.9}>
+                      <View style={{ paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.pill, backgroundColor: palette.success }}>
+                        <Text variant="label" color="#fff">Accept</Text>
+                      </View>
+                    </PressableScale>
+                    <PressableScale onPress={() => void decline(invite)} hapticOnPress="none" scaleTo={0.9}>
+                      <View style={{ paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.pill, borderWidth: 1, borderColor: palette.border }}>
+                        <Text variant="caption" tone="textFaint">Decline</Text>
+                      </View>
+                    </PressableScale>
+                  </View>
+                )}
+              </View>
+            </View>
+          );
+        })}
+      </Card>
+    </>
   );
 }
 
