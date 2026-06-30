@@ -71,6 +71,8 @@ export interface BucketItem {
   /** Populated only once status flips to "completed". */
   memory?: Memory;
   completedAt?: Millis;
+  travelPins?: CountryPin[];
+  template?: string;
   createdAt: Millis;
   updatedAt: Millis;
 }
@@ -89,6 +91,13 @@ export interface BucketList {
   updatedAt: Millis;
 }
 
+/** A country pin on the travel world map. */
+export interface CountryPin {
+  iso: string;
+  country: string;
+  status: 'visited' | 'want';
+}
+
 /** A pre-curated idea from the Spark Deck, injectable into a list. */
 export interface SparkCard {
   id: ID;
@@ -97,6 +106,7 @@ export interface SparkCard {
   category: string;
   /** Accent hint the UI may use to tint the card. */
   accentKey?: 'primary' | 'cool' | 'warm';
+  template?: string;
 }
 
 /** A friend's completed quest surfaced in the Registry social feed. */

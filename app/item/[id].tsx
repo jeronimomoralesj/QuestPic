@@ -21,6 +21,8 @@ import { ListAssign } from '@/components/ListAssign';
 import { PhotoJournal } from '@/components/PhotoJournal';
 import { GeoPinpoint } from '@/components/GeoPinpoint';
 import { CrewTagging } from '@/components/CrewTagging';
+import { CountryMap } from '@/components/CountryMap';
+import type { CountryPin } from '@/db/types';
 import { useVault } from '@/state/VaultProvider';
 import { usePalette } from '@/theme/ThemeProvider';
 import { SPACING, RADIUS } from '@/theme/themes';
@@ -136,6 +138,21 @@ export default function ItemDetailScreen() {
         />
 
         <Spacer size={SPACING.xxl} />
+
+        {/* Travel Map — shown for travel-map template items */}
+        {item.template === 'travel-map' && (
+          <>
+            <Divider />
+            <Spacer size={SPACING.xl} />
+            <CountryMap
+              pins={item.travelPins ?? []}
+              onUpdate={(pins: CountryPin[]) => vault.setTravelPins(item.id, pins)}
+            />
+            <Spacer size={SPACING.xl} />
+            <Divider />
+            <Spacer size={SPACING.xl} />
+          </>
+        )}
 
         {completed ? (
           /* ---------- The Memory Studio ---------- */

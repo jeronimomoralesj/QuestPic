@@ -1,18 +1,16 @@
 /**
  * The Spark Deck.
  *
- * A swipeable deck of deliberately non-cliché ideas. Pick a target list with the
- * pills up top; fling a card right to inject it into that list as a fresh open
- * quest (haptic confirm), or left to skip. The deck is gesture-driven via
- * react-native-gesture-handler with all motion on the UI thread.
+ * A swipeable deck of ideas with category filtering. Pick a target list with the
+ * pills up top; filter by category with the second row; fling a card right to
+ * inject it into that list as a fresh open quest (haptic confirm), or left to skip.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ScrollView, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
-  useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
@@ -28,20 +26,35 @@ import { SPARK_CARDS } from '@/db/seed';
 import { usePalette } from '@/theme/ThemeProvider';
 import { SPACING } from '@/theme/themes';
 
+const ALL_CATEGORIES = ['All', ...Array.from(new Set(SPARK_CARDS.map((c) => c.category)))];
+
 export default function SparkScreen() {
   const palette = usePalette();
   const { lists, createItem } = useVault();
   const [index, setIndex] = useState(0);
   const [targetListId, setTargetListId] = useState<string | null>(null);
   const [keptCount, setKeptCount] = useState(0);
+  const [selectedCategory, setSelectedCategory] = useState('All');
 
   const translateX = useSharedValue(0);
-  const deck = SPARK_CARDS;
-  const remaining = deck.length - index;
+
+  const filteredDeck = useMemo(
+    () =>
+      selectedCategory === 'All'
+        ? SPARK_CARDS
+        : SPARK_CARDS.filter((c) => c.category === selectedCategory),
+    [selectedCategory],
+  );
+
+  useEffect(() => {
+    translateX.value = 0;
+    setIndex(0);
+  }, [selectedCategory, translateX]);
+
+  const remaining = filteredDeck.length - index;
 
   const effectiveTarget = targetListId ?? lists[0]?.id ?? null;
-  const targetLabel =
-    lists.find((l) => l.id === effectiveTarget)?.name ?? 'Open Quests';
+  const targetLabel = lists.find((l) => l.id === effectiveTarget)?.name ?? 'Open Quests';
 
   const advance = useCallback(() => {
     translateX.value = 0;
@@ -50,19 +63,20 @@ export default function SparkScreen() {
 
   const onKeep = useCallback(
     (cardIndex: number) => {
-      const card = deck[cardIndex];
+      const card = filteredDeck[cardIndex];
       if (!card) return;
       void createItem({
         title: card.title,
         subtitle: card.subtitle,
         category: card.category,
+        template: card.template,
         listIds: effectiveTarget ? [effectiveTarget] : [],
       });
       setKeptCount((c) => c + 1);
       void haptic.success();
       advance();
     },
-    [deck, createItem, effectiveTarget, advance],
+    [filteredDeck, createItem, effectiveTarget, advance],
   );
 
   const onSkip = useCallback(() => {
@@ -108,24 +122,42 @@ export default function SparkScreen() {
 
       {/* Target list selector */}
       <Spacer size={SPACING.lg} />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
-        {lists.map((l) => (
-          <Pill
-            key={l.id}
-            label={`${l.glyph} ${l.name}`}
-            active={effectiveTarget === l.id}
-            onPress={() => setTargetListId(l.id)}
-          />
-        ))}
-      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+        <View style={{ flexDirection: 'row', gap: SPACING.sm, paddingRight: SPACING.lg }}>
+          {lists.map((l) => (
+            <Pill
+              key={l.id}
+              label={`${l.glyph} ${l.name}`}
+              active={effectiveTarget === l.id}
+              onPress={() => setTargetListId(l.id)}
+            />
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Category filter */}
+      <Spacer size={SPACING.md} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+        <View style={{ flexDirection: 'row', gap: SPACING.sm, paddingRight: SPACING.lg }}>
+          {ALL_CATEGORIES.map((cat) => (
+            <Pill
+              key={cat}
+              label={cat}
+              active={selectedCategory === cat}
+              tone="cool"
+              onPress={() => setSelectedCategory(cat)}
+            />
+          ))}
+        </View>
+      </ScrollView>
 
       {/* Deck */}
       <View style={{ flex: 1, marginTop: SPACING.xl, marginBottom: SPACING.lg }}>
         {remaining <= 0 ? (
-          <DeckEmpty keptCount={keptCount} />
+          <DeckEmpty keptCount={keptCount} onReset={() => { setIndex(0); setKeptCount(0); }} />
         ) : (
           <View style={{ flex: 1, position: 'relative' }}>
-            {deck
+            {filteredDeck
               .slice(index, index + 3)
               .map((card, stackPos) => {
                 const isTop = stackPos === 0;
@@ -150,7 +182,7 @@ export default function SparkScreen() {
         )}
       </View>
 
-      {/* Manual controls (accessibility + non-gesture path) */}
+      {/* Manual controls */}
       {remaining > 0 && (
         <View style={{ flexDirection: 'row', gap: SPACING.md }}>
           <View style={{ flex: 1 }}>
@@ -165,21 +197,19 @@ export default function SparkScreen() {
   );
 }
 
-function DeckEmpty({ keptCount }: { keptCount: number }) {
+function DeckEmpty({ keptCount, onReset }: { keptCount: number; onReset: () => void }) {
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text variant="display" tone="accent" center>
-        ✦
-      </Text>
+      <Text variant="display" tone="accent" center>✦</Text>
       <Spacer size={SPACING.md} />
-      <Text variant="heading" center>
-        Deck cleared.
-      </Text>
+      <Text variant="heading" center>Deck cleared.</Text>
       <Spacer size={SPACING.xs} />
       <Text variant="body" tone="textMuted" center>
         You injected {keptCount} {keptCount === 1 ? 'idea' : 'ideas'} this round.
       </Text>
       <Spacer size={SPACING.xl} />
+      <Button label="Go again" variant="outline" onPress={onReset} />
+      <Spacer size={SPACING.md} />
       <Button label="Back to the Vault" onPress={() => router.replace('/(tabs)')} />
     </View>
   );

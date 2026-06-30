@@ -12,6 +12,7 @@ import type {
   BucketItem,
   BucketList,
   Collaborator,
+  CountryPin,
   GeoPin,
   ID,
   MediaPayload,
@@ -76,6 +77,7 @@ export interface NewItemInput {
   title: string;
   subtitle?: string;
   category?: string;
+  template?: string;
   /** Lists to drop the new item into immediately. */
   listIds?: ID[];
 }
@@ -87,6 +89,7 @@ export async function createItem(input: NewItemInput): Promise<BucketItem> {
     title: input.title.trim(),
     subtitle: input.subtitle,
     category: input.category,
+    template: input.template,
     status: 'open',
     listIds: dedupe(input.listIds ?? []),
     createdAt: now,
@@ -181,6 +184,10 @@ export function toggleCrew(itemId: ID, collaboratorId: ID): Promise<BucketItem |
       ? m.crew.filter((id) => id !== collaboratorId)
       : [...m.crew, collaboratorId],
   }));
+}
+
+export async function setTravelPins(itemId: ID, pins: CountryPin[]): Promise<BucketItem | null> {
+  return items.patch(itemId, { travelPins: pins });
 }
 
 /* ----------------------------------------------------------------- Registry */

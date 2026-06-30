@@ -39,18 +39,30 @@ export default function RegistryScreen() {
       </Text>
       <Spacer size={SPACING.xl} />
 
-      {registry.map((entry, i) => (
-        <View key={entry.id}>
-          <RegistryRow entry={entry} />
-          {i < registry.length - 1 && (
-            <>
-              <Spacer size={SPACING.lg} />
-              <Divider />
-              <Spacer size={SPACING.lg} />
-            </>
-          )}
+      {registry.length === 0 ? (
+        <View style={{ alignItems: 'center', paddingTop: SPACING.xxl }}>
+          <Text variant="display" tone="textFaint" center>⊚</Text>
+          <Spacer size={SPACING.lg} />
+          <Text variant="heading" center>Nothing here yet.</Text>
+          <Spacer size={SPACING.sm} />
+          <Text variant="body" tone="textMuted" center>
+            When your crew completes quests, their moments will appear here.
+          </Text>
         </View>
-      ))}
+      ) : (
+        registry.map((entry, i) => (
+          <View key={entry.id}>
+            <RegistryRow entry={entry} />
+            {i < registry.length - 1 && (
+              <>
+                <Spacer size={SPACING.lg} />
+                <Divider />
+                <Spacer size={SPACING.lg} />
+              </>
+            )}
+          </View>
+        ))
+      )}
     </Screen>
   );
 }

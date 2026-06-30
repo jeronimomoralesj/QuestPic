@@ -24,6 +24,7 @@ import type {
   BucketItem,
   BucketList,
   Collaborator,
+  CountryPin,
   GeoPin,
   ID,
   MediaPayload,
@@ -76,6 +77,7 @@ interface VaultActions {
   setGeoPin: (id: ID, geo: GeoPin) => Promise<void>;
   setMemoryNote: (id: ID, note: string) => Promise<void>;
   toggleCrew: (id: ID, collaboratorId: ID) => Promise<void>;
+  setTravelPins: (id: ID, pins: CountryPin[]) => Promise<void>;
   // Registry
   reactToEntry: (entryId: ID, reactionKey: string) => Promise<void>;
   cloneEntry: (entryId: ID, listIds?: ID[]) => Promise<BucketItem | null>;
@@ -228,6 +230,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       setMemoryNote: (id, note) => run(() => repo.setMemoryNote(id, note)).then(() => undefined),
       toggleCrew: (id, collaboratorId) =>
         run(() => repo.toggleCrew(id, collaboratorId)).then(() => undefined),
+      setTravelPins: (id, pins) => run(() => repo.setTravelPins(id, pins)).then(() => undefined),
       reactToEntry: (entryId, reactionKey) =>
         run(() => repo.reactToEntry(entryId, reactionKey)).then(() => undefined),
       cloneEntry: (entryId, listIds) => run(() => repo.cloneRegistryEntry(entryId, listIds)),
