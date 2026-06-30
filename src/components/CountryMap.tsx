@@ -7,7 +7,8 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Image, Modal, Platform, ScrollView, View } from 'react-native';
+import { Image, Modal, Platform, ScrollView, View, useWindowDimensions } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/ui/Text';
@@ -224,17 +225,6 @@ const BY_CONTINENT = CONTINENT_ORDER.reduce<Record<string, CountryData[]>>((acc,
 
 const TOTAL = COUNTRIES.length;
 
-/** Web Mercator projection → fractional [0,1] position */
-function mercatorXY(lat: number, lng: number): { fx: number; fy: number } {
-  const fx = (lng + 180) / 360;
-  const latRad = (lat * Math.PI) / 180;
-  const mercN = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
-  const fy = Math.max(0, Math.min(1, 0.5 - mercN / (2 * Math.PI)));
-  return { fx: Math.max(0, Math.min(1, fx)), fy };
-}
-
-const DOT = 5;
-const MAP_ASPECT = 0.52; // height / width
 
 export function CountryMap({
   pins,
@@ -245,8 +235,8 @@ export function CountryMap({
 }) {
   const palette = usePalette();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
 
-  const [mapWidth, setMapWidth] = useState(300);
   const [modalPin, setModalPin] = useState<CountryPin | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -255,7 +245,7 @@ export function CountryMap({
   const visitedCount = pins.filter((p) => p.status === 'visited').length;
   const wantCount = pins.filter((p) => p.status === 'want').length;
 
-  const mapHeight = mapWidth * MAP_ASPECT;
+  const mapHeight = Math.round(screenWidth * 0.5);
 
   const openCountry = (iso: string, name: string) => {
     const existing = pinMap.get(iso);
@@ -390,13 +380,11 @@ export function CountryMap({
         <View style={{ flex: Math.max(0, 1 - visitedW - wantW) }} />
       </View>
 
-      {/* Mercator dot map */}
+      {/* Real map with country markers */}
       <View
-        onLayout={(e) => setMapWidth(e.nativeEvent.layout.width)}
         style={{
           width: '100%',
           height: mapHeight,
-          backgroundColor: palette.surfaceAlt,
           borderRadius: RADIUS.lg,
           overflow: 'hidden',
           marginBottom: SPACING.lg,
@@ -404,31 +392,44 @@ export function CountryMap({
           borderColor: palette.border,
         }}
       >
-        {COUNTRIES.map((c) => {
-          const { fx, fy } = mercatorXY(c.lat, c.lng);
-          const pin = pinMap.get(c.iso);
-          const dotColor =
-            pin?.status === 'visited'
-              ? palette.success
-              : pin?.status === 'want'
-              ? palette.cool
-              : palette.border;
-          return (
-            <View
-              key={c.iso}
-              style={{
-                position: 'absolute',
-                left: fx * mapWidth - DOT / 2,
-                top: fy * mapHeight - DOT / 2,
-                width: DOT,
-                height: DOT,
-                borderRadius: DOT / 2,
-                backgroundColor: dotColor,
-                opacity: pin ? 1 : 0.25,
-              }}
-            />
-          );
-        })}
+        <MapView
+          style={{ flex: 1 }}
+          initialRegion={{ latitude: 20, longitude: 10, latitudeDelta: 140, longitudeDelta: 160 }}
+          scrollEnabled={false}
+          zoomEnabled={false}
+          rotateEnabled={false}
+          pitchEnabled={false}
+          mapType="standard"
+        >
+          {COUNTRIES.map((c) => {
+            const pin = pinMap.get(c.iso);
+            const dotColor =
+              pin?.status === 'visited'
+                ? '#22c55e'
+                : pin?.status === 'want'
+                ? '#3b82f6'
+                : '#94a3b855';
+            const size = pin ? 10 : 5;
+            return (
+              <Marker
+                key={c.iso}
+                coordinate={{ latitude: c.lat, longitude: c.lng }}
+                onPress={() => openCountry(c.iso, c.name)}
+                anchor={{ x: 0.5, y: 0.5 }}
+                tracksViewChanges={false}
+              >
+                <View
+                  style={{
+                    width: size,
+                    height: size,
+                    borderRadius: size / 2,
+                    backgroundColor: dotColor,
+                  }}
+                />
+              </Marker>
+            );
+          })}
+        </MapView>
       </View>
 
       {/* Hint */}

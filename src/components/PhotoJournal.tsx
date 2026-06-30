@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Image, Modal, SafeAreaView, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Image, Modal, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Text } from '@/ui/Text';
 import { PressableScale } from '@/ui/Pressable';
@@ -122,45 +123,55 @@ function PhotoLightbox({
 }) {
   const palette = usePalette();
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   if (!photo) return null;
   return (
     <Modal visible animationType="fade" transparent onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.96)', alignItems: 'center', justifyContent: 'center' }}>
-        <SafeAreaView style={{ flex: 1, width: '100%' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' }}>
+        {/* Close — positioned below the status bar using insets */}
+        <TouchableOpacity
+          onPress={onClose}
+          hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+          style={{
+            position: 'absolute',
+            top: insets.top + 12,
+            right: 20,
+            zIndex: 10,
+            padding: 10,
+            borderRadius: 20,
+            backgroundColor: 'rgba(255,255,255,0.12)',
+          }}
+        >
+          <Text variant="heading" color="#fff">✕</Text>
+        </TouchableOpacity>
+
+        {/* Image centred in the remaining space */}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+          <Image
+            source={{ uri: `data:${photo.mime};base64,${photo.base64}` }}
+            style={{ width: width - 32, height: height * 0.72, borderRadius: 12 }}
+            resizeMode="contain"
+          />
+        </View>
+
+        {/* Delete — pinned above home indicator */}
+        <View style={{ paddingHorizontal: 24, paddingBottom: insets.bottom + 16, alignItems: 'flex-end' }}>
           <TouchableOpacity
-            onPress={onClose}
-            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-            style={{ position: 'absolute', top: 16, right: 20, zIndex: 10, padding: 8 }}
+            onPress={onDeletePress}
+            style={{
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: confirmDelete ? palette.warm : 'rgba(255,255,255,0.25)',
+              backgroundColor: confirmDelete ? palette.warm + '33' : 'transparent',
+            }}
           >
-            <Text variant="heading" color="#fff">✕</Text>
+            <Text variant="label" color={confirmDelete ? palette.warm : '#aaa'}>
+              {confirmDelete ? 'Tap again to delete' : '⊗ Delete photo'}
+            </Text>
           </TouchableOpacity>
-
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
-            <Image
-              source={{ uri: `data:${photo.mime};base64,${photo.base64}` }}
-              style={{ width: width - 32, height: height * 0.72, borderRadius: 12 }}
-              resizeMode="contain"
-            />
-          </View>
-
-          <View style={{ padding: 24, alignItems: 'flex-end' }}>
-            <TouchableOpacity
-              onPress={onDeletePress}
-              style={{
-                paddingHorizontal: 20,
-                paddingVertical: 10,
-                borderRadius: 24,
-                borderWidth: 1,
-                borderColor: confirmDelete ? palette.warm : palette.border,
-                backgroundColor: confirmDelete ? palette.warm + '22' : 'transparent',
-              }}
-            >
-              <Text variant="label" color={confirmDelete ? palette.warm : '#888'}>
-                {confirmDelete ? 'Tap again to delete' : '⊗ Delete photo'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
+        </View>
       </View>
     </Modal>
   );
