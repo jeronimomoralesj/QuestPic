@@ -1,12 +1,5 @@
-/**
- * The Registry — a social timeline of the crew's completed quests.
- *
- * Search filters the local feed by author/title. The "Find friend" bar lets you
- * look up any user by @handle via the API and see their profile card.
- */
-
-import React, { useState } from 'react';
-import { ActivityIndicator, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Modal, SafeAreaView, ScrollView, TextInput, View } from 'react-native';
 import { Screen } from '@/ui/Screen';
 import { Text } from '@/ui/Text';
 import { PressableScale } from '@/ui/Pressable';
@@ -14,7 +7,7 @@ import { Card, Divider, Eyebrow, GlyphChip, Spacer } from '@/ui/atoms';
 import { haptic } from '@/ui/haptics';
 import { useVault } from '@/state/VaultProvider';
 import { usePalette } from '@/theme/ThemeProvider';
-import { RADIUS, SPACING } from '@/theme/themes';
+import { SPACING, RADIUS } from '@/theme/themes';
 import { relativeTime } from '@/utils/time';
 import { api } from '@/sync/client';
 import type { PublicUser } from '@/sync/client';
@@ -29,190 +22,266 @@ const REACTIONS: { key: string; glyph: string }[] = [
 export default function RegistryScreen() {
   const { registry } = useVault();
   const palette = usePalette();
+  const [searchOpen, setSearchOpen] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [handle, setHandle] = useState('');
+  return (
+    <View style={{ flex: 1 }}>
+      <Screen bottomInset={96}>
+        <Eyebrow>QuestPic · Registry</Eyebrow>
+        <Spacer size={SPACING.sm} />
+        <Text variant="display">The feed.</Text>
+        <Spacer size={SPACING.xs} />
+        <Text variant="body" tone="textMuted">
+          Quests your crew just answered. Clone any into your Vault.
+        </Text>
+        <Spacer size={SPACING.xl} />
+
+        {registry.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingTop: SPACING.xxl }}>
+            <Text variant="display" tone="textFaint" center>⊚</Text>
+            <Spacer size={SPACING.lg} />
+            <Text variant="heading" center>Nothing here yet.</Text>
+            <Spacer size={SPACING.sm} />
+            <Text variant="body" tone="textMuted" center>
+              When your crew completes quests, their moments will appear here.{'\n'}
+              Tap ⊛ to find a friend.
+            </Text>
+          </View>
+        ) : (
+          registry.map((entry, i) => (
+            <View key={entry.id}>
+              <RegistryRow entry={entry} />
+              {i < registry.length - 1 && (
+                <>
+                  <Spacer size={SPACING.lg} />
+                  <Divider />
+                  <Spacer size={SPACING.lg} />
+                </>
+              )}
+            </View>
+          ))
+        )}
+      </Screen>
+
+      {/* FAB */}
+      <PressableScale
+        onPress={() => { void haptic.tap(); setSearchOpen(true); }}
+        hapticOnPress="none"
+        scaleTo={0.92}
+        style={{
+          position: 'absolute',
+          bottom: 108,
+          right: 20,
+        }}
+      >
+        <View
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 26,
+            backgroundColor: palette.accent,
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            elevation: 8,
+          }}
+        >
+          <Text variant="heading" color={palette.onAccent}>⊛</Text>
+        </View>
+      </PressableScale>
+
+      <SearchOverlay
+        visible={searchOpen}
+        registry={registry}
+        onClose={() => setSearchOpen(false)}
+      />
+    </View>
+  );
+}
+
+function SearchOverlay({
+  visible,
+  registry,
+  onClose,
+}: {
+  visible: boolean;
+  registry: RegistryEntry[];
+  onClose: () => void;
+}) {
+  const palette = usePalette();
+  const [query, setQuery] = useState('');
   const [lookupResult, setLookupResult] = useState<PublicUser | null>(null);
   const [lookupError, setLookupError] = useState('');
-  const [searching, setSearching] = useState(false);
+  const [looking, setLooking] = useState(false);
+  const inputRef = useRef<TextInput>(null);
 
-  const filtered = searchQuery.trim()
-    ? registry.filter((e) => {
-        const q = searchQuery.toLowerCase();
-        return (
-          e.author.name.toLowerCase().includes(q) ||
-          e.author.handle.toLowerCase().includes(q) ||
-          e.title.toLowerCase().includes(q)
-        );
-      })
-    : registry;
+  useEffect(() => {
+    if (visible) {
+      setQuery('');
+      setLookupResult(null);
+      setLookupError('');
+      setTimeout(() => inputRef.current?.focus(), 200);
+    }
+  }, [visible]);
+
+  const feedResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return registry.filter(
+      (e) =>
+        e.author.name.toLowerCase().includes(q) ||
+        e.author.handle.toLowerCase().includes(q) ||
+        e.title.toLowerCase().includes(q),
+    );
+  }, [query, registry]);
 
   const lookupFriend = async () => {
-    const raw = handle.trim();
+    const raw = query.trim();
     if (!raw) return;
     const h = raw.startsWith('@') ? raw : `@${raw}`;
-    setSearching(true);
+    setLooking(true);
     setLookupResult(null);
     setLookupError('');
     try {
       const res = await api.lookupUser(h);
       setLookupResult(res.user);
-    } catch (e: unknown) {
-      setLookupError(e instanceof Error ? e.message : 'Not found');
+      await haptic.success();
+    } catch {
+      setLookupError('No quester found — try @theirhandle exactly.');
+      await haptic.warning();
     } finally {
-      setSearching(false);
+      setLooking(false);
     }
   };
 
   return (
-    <Screen bottomInset={96}>
-      <Eyebrow>QuestPic · Registry</Eyebrow>
-      <Spacer size={SPACING.sm} />
-      <Text variant="display">The feed.</Text>
-      <Spacer size={SPACING.xs} />
-      <Text variant="body" tone="textMuted">
-        Quests your crew just answered. Clone any into your Vault.
-      </Text>
-      <Spacer size={SPACING.xl} />
-
-      {/* Search bar */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderWidth: 1,
-          borderColor: palette.border,
-          borderRadius: RADIUS.pill,
-          paddingHorizontal: SPACING.md,
-          paddingVertical: SPACING.sm,
-          backgroundColor: palette.surfaceAlt,
-          marginBottom: SPACING.xl,
-          gap: SPACING.sm,
-        }}
-      >
-        <Text variant="caption" tone="textFaint">◎</Text>
-        <TextInput
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search quests…"
-          placeholderTextColor={palette.textFaint}
-          style={{ flex: 1, color: palette.text, fontSize: 14 }}
-          returnKeyType="search"
-          autoCorrect={false}
-        />
-        {searchQuery.length > 0 ? (
-          <PressableScale onPress={() => setSearchQuery('')} hapticOnPress="tap" scaleTo={0.9}>
-            <Text variant="caption" tone="textFaint">✕</Text>
-          </PressableScale>
-        ) : null}
-      </View>
-
-      {/* Find a friend */}
-      <Card style={{ marginBottom: SPACING.xl }}>
-        <Eyebrow tone="cool">Find a friend</Eyebrow>
-        <Spacer size={SPACING.sm} />
-        <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-          <TextInput
-            value={handle}
-            onChangeText={setHandle}
-            placeholder="@handle"
-            placeholderTextColor={palette.textFaint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            onSubmitEditing={() => void lookupFriend()}
-            style={{
-              flex: 1,
-              borderWidth: 1,
-              borderColor: palette.border,
-              borderRadius: RADIUS.pill,
-              paddingHorizontal: SPACING.md,
-              paddingVertical: SPACING.sm,
-              color: palette.text,
-              fontSize: 14,
-              backgroundColor: palette.surfaceAlt,
-            }}
-          />
-          <PressableScale onPress={() => void lookupFriend()} hapticOnPress="tap" scaleTo={0.92} disabled={searching}>
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: palette.bg }}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.md }}>
+            <PressableScale onPress={onClose} hapticOnPress="tap">
+              <Text variant="label" tone="textMuted" style={{ paddingRight: SPACING.sm }}>Cancel</Text>
+            </PressableScale>
             <View
               style={{
-                paddingHorizontal: SPACING.lg,
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderRadius: RADIUS.lg,
+                borderWidth: 1,
+                borderColor: palette.border,
+                backgroundColor: palette.surface,
+                paddingHorizontal: SPACING.md,
                 paddingVertical: SPACING.sm + 2,
-                borderRadius: RADIUS.pill,
-                backgroundColor: palette.accent,
+                gap: SPACING.sm,
               }}
             >
-              {searching ? (
-                <ActivityIndicator size="small" color={palette.onAccent} />
-              ) : (
-                <Text variant="label" color={palette.onAccent}>Search</Text>
+              <Text variant="body" tone="textFaint">⊛</Text>
+              <TextInput
+                ref={inputRef}
+                value={query}
+                onChangeText={(t) => { setQuery(t); setLookupResult(null); setLookupError(''); }}
+                placeholder="Search quests or find @friend"
+                placeholderTextColor={palette.textFaint}
+                returnKeyType="search"
+                onSubmitEditing={() => void lookupFriend()}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={{ flex: 1, color: palette.text, fontSize: 16 }}
+              />
+              {query.length > 0 && (
+                <PressableScale onPress={() => { setQuery(''); setLookupResult(null); setLookupError(''); }} hapticOnPress="tap">
+                  <Text variant="caption" tone="textFaint">✕</Text>
+                </PressableScale>
               )}
             </View>
-          </PressableScale>
-        </View>
+          </View>
 
-        {lookupError ? (
-          <>
-            <Spacer size={SPACING.sm} />
-            <Text variant="caption" tone="textFaint">{lookupError}</Text>
-          </>
-        ) : null}
-
-        {lookupResult ? (
-          <>
-            <Spacer size={SPACING.md} />
-            <Divider />
-            <Spacer size={SPACING.md} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
-              <GlyphChip glyph={lookupResult.avatar || '◈'} size={44} />
-              <View style={{ flex: 1 }}>
-                <Text variant="label">{lookupResult.name}</Text>
-                <Text variant="caption" tone="textFaint">{lookupResult.handle}</Text>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl }}>
+            {(lookupResult || lookupError || looking) && (
+              <View style={{ marginBottom: SPACING.xl }}>
+                <Eyebrow tone="cool">Friend search</Eyebrow>
+                <Spacer size={SPACING.md} />
+                {looking && <ActivityIndicator color={palette.accent} />}
+                {lookupError ? <Text variant="caption" tone="warm">{lookupError}</Text> : null}
+                {lookupResult && (
+                  <Card>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+                      <GlyphChip glyph={lookupResult.avatar || '◈'} size={44} tone="cool" />
+                      <View style={{ flex: 1 }}>
+                        <Text variant="label">{lookupResult.name}</Text>
+                        <Text variant="caption" tone="textFaint">{lookupResult.handle}</Text>
+                      </View>
+                      <Eyebrow tone="cool">Found ✓</Eyebrow>
+                    </View>
+                  </Card>
+                )}
               </View>
-              <Eyebrow tone="cool">Found</Eyebrow>
-            </View>
-          </>
-        ) : null}
+            )}
 
-        {!lookupResult && !lookupError && !searching ? (
-          <>
-            <Spacer size={SPACING.sm} />
-            <Text variant="caption" tone="textFaint">
-              Enter a handle like @aria to find a friend's profile.
-            </Text>
-          </>
-        ) : null}
-      </Card>
+            {query.trim().length > 0 && feedResults.length === 0 && !lookupResult && !looking && (
+              <View style={{ alignItems: 'center', paddingTop: SPACING.xxl }}>
+                <Text variant="heading" tone="textMuted" center>No matching quests.</Text>
+                <Spacer size={SPACING.sm} />
+                <PressableScale onPress={() => void lookupFriend()} hapticOnPress="tap" scaleTo={0.96}>
+                  <View style={{ paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md, borderRadius: RADIUS.pill, borderWidth: 1, borderColor: palette.cool }}>
+                    <Text variant="label" color={palette.cool}>{looking ? 'Looking…' : `Find @${query.replace('@', '')} on QuestPic`}</Text>
+                  </View>
+                </PressableScale>
+              </View>
+            )}
 
-      {filtered.length === 0 ? (
-        <View style={{ alignItems: 'center', paddingTop: SPACING.xxl }}>
-          <Text variant="display" tone="textFaint" center>⊚</Text>
-          <Spacer size={SPACING.lg} />
-          <Text variant="heading" center>
-            {searchQuery ? 'No matches.' : 'Nothing here yet.'}
-          </Text>
-          <Spacer size={SPACING.sm} />
-          <Text variant="body" tone="textMuted" center>
-            {searchQuery
-              ? 'Try a different name or quest title.'
-              : 'When your crew completes quests, their moments will appear here.'}
-          </Text>
-        </View>
-      ) : (
-        filtered.map((entry, i) => (
-          <View key={entry.id}>
-            <RegistryRow entry={entry} />
-            {i < filtered.length - 1 && (
+            {feedResults.map((entry, i) => (
+              <View key={entry.id}>
+                <RegistryRowCompact entry={entry} />
+                {i < feedResults.length - 1 && (
+                  <>
+                    <Spacer size={SPACING.md} />
+                    <Divider />
+                    <Spacer size={SPACING.md} />
+                  </>
+                )}
+              </View>
+            ))}
+
+            {query.trim().length === 0 && (
               <>
-                <Spacer size={SPACING.lg} />
-                <Divider />
-                <Spacer size={SPACING.lg} />
+                <Eyebrow>Suggestions</Eyebrow>
+                <Spacer size={SPACING.md} />
+                {['@aria', '@marco', '@yuki', '@dev'].map((h) => (
+                  <PressableScale
+                    key={h}
+                    onPress={() => { setQuery(h); inputRef.current?.focus(); }}
+                    hapticOnPress="select"
+                    scaleTo={0.98}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.md, borderBottomWidth: 1, borderColor: palette.border }}>
+                      <GlyphChip glyph="◈" size={36} />
+                      <Text variant="body" tone="textMuted">{h}</Text>
+                    </View>
+                  </PressableScale>
+                ))}
               </>
             )}
-          </View>
-        ))
-      )}
-    </Screen>
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+}
+
+function RegistryRowCompact({ entry }: { entry: RegistryEntry }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm }}>
+      <GlyphChip glyph={entry.author.avatar} size={36} />
+      <View style={{ flex: 1 }}>
+        <Text variant="label" numberOfLines={1}>{entry.title}</Text>
+        <Text variant="caption" tone="textFaint">{entry.author.handle} · {relativeTime(entry.completedAt)}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -268,41 +337,17 @@ function RegistryRow({ entry }: { entry: RegistryEntry }) {
           const count = (entry.reactions[r.key] ?? 0) + (bumps[r.key] ?? 0);
           return (
             <PressableScale key={r.key} onPress={() => onReact(r.key)} hapticOnPress="none" scaleTo={0.9}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                  paddingHorizontal: SPACING.md,
-                  paddingVertical: SPACING.sm,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                }}
-              >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 999, borderWidth: 1, borderColor: palette.border }}>
                 <Text variant="label" tone="accent">{r.glyph}</Text>
                 <Text variant="caption" tone="textMuted">{count}</Text>
               </View>
             </PressableScale>
           );
         })}
-
         <View style={{ flex: 1 }} />
-
         <PressableScale onPress={onClone} hapticOnPress="none" disabled={cloned} scaleTo={0.94}>
-          <View
-            style={{
-              paddingHorizontal: SPACING.lg,
-              paddingVertical: SPACING.sm,
-              borderRadius: 999,
-              backgroundColor: cloned ? palette.surfaceAlt : palette.accent,
-            }}
-          >
-            <Text
-              variant="label"
-              color={cloned ? palette.textMuted : palette.onAccent}
-              style={{ letterSpacing: 1 }}
-            >
+          <View style={{ paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderRadius: 999, backgroundColor: cloned ? palette.surfaceAlt : palette.accent }}>
+            <Text variant="label" color={cloned ? palette.textMuted : palette.onAccent} style={{ letterSpacing: 1 }}>
               {cloned ? '✓ In Vault' : '⌁ Clone'}
             </Text>
           </View>

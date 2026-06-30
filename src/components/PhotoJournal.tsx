@@ -1,13 +1,5 @@
-/**
- * Photo Journal — a Base64 image gallery stored inline on the item document.
- *
- * Photos are captured/picked via expo-image-picker, requested at a modest
- * quality so the Base64 payload stays reasonable inside SQLite, and rendered
- * from a `data:` URI. Tap a tile to remove it.
- */
-
 import React, { useState } from 'react';
-import { Image, View } from 'react-native';
+import { Image, Modal, SafeAreaView, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Text } from '@/ui/Text';
 import { PressableScale } from '@/ui/Pressable';
@@ -31,6 +23,8 @@ export function PhotoJournal({
 }) {
   const palette = usePalette();
   const [busy, setBusy] = useState(false);
+  const [viewing, setViewing] = useState<MediaPayload | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const pick = async (source: 'camera' | 'library') => {
     setBusy(true);
@@ -39,10 +33,7 @@ export function PhotoJournal({
         source === 'camera'
           ? await ImagePicker.requestCameraPermissionsAsync()
           : await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        await haptic.warning();
-        return;
-      }
+      if (!perm.granted) { await haptic.warning(); return; }
       const opts: ImagePicker.ImagePickerOptions = {
         base64: true,
         quality: 0.55,
@@ -50,11 +41,9 @@ export function PhotoJournal({
         aspect: [4, 5],
         mediaTypes: ['images'],
       };
-      const result =
-        source === 'camera'
-          ? await ImagePicker.launchCameraAsync(opts)
-          : await ImagePicker.launchImageLibraryAsync(opts);
-
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync(opts)
+        : await ImagePicker.launchImageLibraryAsync(opts);
       const asset = result.canceled ? null : result.assets[0];
       if (asset?.base64) {
         onAdd({
@@ -80,76 +69,114 @@ export function PhotoJournal({
         {photos.map((p) => (
           <PressableScale
             key={p.id}
-            onPress={() => {
-              void haptic.warning();
-              onRemove(p.id);
-            }}
-            hapticOnPress="none"
+            onPress={() => { setViewing(p); setConfirmDelete(false); }}
+            hapticOnPress="tap"
             scaleTo={0.92}
           >
             <Image
               source={{ uri: `data:${p.mime};base64,${p.base64}` }}
-              style={{
-                width: TILE,
-                height: TILE,
-                borderRadius: RADIUS.md,
-                borderWidth: 1,
-                borderColor: palette.border,
-              }}
+              style={{ width: TILE, height: TILE, borderRadius: RADIUS.md, borderWidth: 1, borderColor: palette.border }}
             />
           </PressableScale>
         ))}
-
-        {/* Add tiles */}
         <AddTile glyph="◎" label="Camera" onPress={() => pick('camera')} disabled={busy} />
         <AddTile glyph="⊞" label="Library" onPress={() => pick('library')} disabled={busy} />
       </View>
       {photos.length === 0 ? (
         <>
           <Spacer size={SPACING.sm} />
-          <Text variant="caption" tone="textFaint">
-            Capture the moment. Tap a photo to remove it.
-          </Text>
+          <Text variant="caption" tone="textFaint">Capture the moment. Tap a photo to view it.</Text>
         </>
       ) : null}
+
+      <PhotoLightbox
+        photo={viewing}
+        confirmDelete={confirmDelete}
+        onClose={() => { setViewing(null); setConfirmDelete(false); }}
+        onDeletePress={() => {
+          if (!confirmDelete) {
+            setConfirmDelete(true);
+            void haptic.warning();
+          } else {
+            if (viewing) onRemove(viewing.id);
+            setViewing(null);
+            setConfirmDelete(false);
+            void haptic.select();
+          }
+        }}
+      />
     </View>
   );
 }
 
-function AddTile({
-  glyph,
-  label,
-  onPress,
-  disabled,
+function PhotoLightbox({
+  photo,
+  confirmDelete,
+  onClose,
+  onDeletePress,
 }: {
-  glyph: string;
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
+  photo: MediaPayload | null;
+  confirmDelete: boolean;
+  onClose: () => void;
+  onDeletePress: () => void;
+}) {
+  const palette = usePalette();
+  const { width, height } = useWindowDimensions();
+  if (!photo) return null;
+  return (
+    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.96)', alignItems: 'center', justifyContent: 'center' }}>
+        <SafeAreaView style={{ flex: 1, width: '100%' }}>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+            style={{ position: 'absolute', top: 16, right: 20, zIndex: 10, padding: 8 }}
+          >
+            <Text variant="heading" color="#fff">✕</Text>
+          </TouchableOpacity>
+
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+            <Image
+              source={{ uri: `data:${photo.mime};base64,${photo.base64}` }}
+              style={{ width: width - 32, height: height * 0.72, borderRadius: 12 }}
+              resizeMode="contain"
+            />
+          </View>
+
+          <View style={{ padding: 24, alignItems: 'flex-end' }}>
+            <TouchableOpacity
+              onPress={onDeletePress}
+              style={{
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                borderRadius: 24,
+                borderWidth: 1,
+                borderColor: confirmDelete ? palette.warm : palette.border,
+                backgroundColor: confirmDelete ? palette.warm + '22' : 'transparent',
+              }}
+            >
+              <Text variant="label" color={confirmDelete ? palette.warm : '#888'}>
+                {confirmDelete ? 'Tap again to delete' : '⊗ Delete photo'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+}
+
+function AddTile({
+  glyph, label, onPress, disabled,
+}: {
+  glyph: string; label: string; onPress: () => void; disabled?: boolean;
 }) {
   const palette = usePalette();
   return (
     <PressableScale onPress={onPress} disabled={disabled} hapticOnPress="tap" scaleTo={0.92}>
-      <View
-        style={{
-          width: TILE,
-          height: TILE,
-          borderRadius: RADIUS.md,
-          borderWidth: 1,
-          borderColor: palette.border,
-          borderStyle: 'dashed',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 4,
-          backgroundColor: palette.surfaceAlt,
-        }}
-      >
-        <Text variant="heading" tone="accent">
-          {glyph}
-        </Text>
-        <Text variant="caption" tone="textFaint" style={{ fontSize: 10 }}>
-          {label}
-        </Text>
+      <View style={{ width: TILE, height: TILE, borderRadius: RADIUS.md, borderWidth: 1, borderColor: palette.border, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: palette.surfaceAlt }}>
+        <Text variant="heading" tone="accent">{glyph}</Text>
+        <Text variant="caption" tone="textFaint" style={{ fontSize: 10 }}>{label}</Text>
       </View>
     </PressableScale>
   );

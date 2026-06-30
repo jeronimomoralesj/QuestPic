@@ -209,6 +209,16 @@ export default function ItemDetailScreen() {
             />
 
             <Spacer size={SPACING.xxl} />
+            <Button
+              label="✦  Done — save & go back"
+              tone="success"
+              onPress={() => {
+                void vault.setMemoryNote(item.id, note);
+                void haptic.success();
+                router.back();
+              }}
+            />
+            <Spacer size={SPACING.md} />
             <Button label="Reopen this quest" tone="warm" variant="outline" onPress={onReopen} />
           </View>
         ) : (
