@@ -72,8 +72,9 @@ export function PressableScale({
       hitSlop={hitSlop}
       accessibilityLabel={accessibilityLabel}
       accessibilityRole={accessibilityRole}
+      style={style}
     >
-      <Animated.View style={[animatedStyle, style]}>{children}</Animated.View>
+      <Animated.View style={animatedStyle}>{children}</Animated.View>
     </Pressable>
   );
 }

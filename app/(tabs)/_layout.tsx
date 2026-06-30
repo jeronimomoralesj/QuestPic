@@ -72,6 +72,7 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             >
               <View
                 style={{
+                  flex: 1,
                   alignItems: 'center',
                   justifyContent: 'center',
                   paddingVertical: SPACING.sm,
