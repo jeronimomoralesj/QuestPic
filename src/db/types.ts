@@ -96,6 +96,7 @@ export interface CountryPin {
   iso: string;
   country: string;
   status: 'visited' | 'want';
+  photos?: MediaPayload[];
 }
 
 /** A pre-curated idea from the Spark Deck, injectable into a list. */

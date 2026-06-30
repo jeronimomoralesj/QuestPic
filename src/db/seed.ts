@@ -1,4 +1,4 @@
-import { initCollections } from './repositories';
+import { initCollections, registry } from './repositories';
 import type { Collaborator, SparkCard } from './types';
 
 export const CREW: Collaborator[] = [
@@ -83,4 +83,8 @@ export const SPARK_CARDS: SparkCard[] = [
 
 export async function seedIfEmpty(): Promise<void> {
   await initCollections();
+  // Purge legacy dummy registry entries from older seed versions
+  for (const id of ['re_1', 're_2', 're_3']) {
+    await registry.remove(id).catch(() => {});
+  }
 }

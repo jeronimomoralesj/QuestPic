@@ -1,13 +1,12 @@
 /**
  * The Registry — a social timeline of the crew's completed quests.
  *
- * Each entry is an editorial moment: author, the quest, where it happened, and a
- * row of reactions you can tap (optimistic count bump + haptic). A single tap on
- * "Clone" forks that quest into your own Vault as a fresh open item.
+ * Search filters the local feed by author/title. The "Find friend" bar lets you
+ * look up any user by @handle via the API and see their profile card.
  */
 
-import React from 'react';
-import { View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, TextInput, View } from 'react-native';
 import { Screen } from '@/ui/Screen';
 import { Text } from '@/ui/Text';
 import { PressableScale } from '@/ui/Pressable';
@@ -15,8 +14,10 @@ import { Card, Divider, Eyebrow, GlyphChip, Spacer } from '@/ui/atoms';
 import { haptic } from '@/ui/haptics';
 import { useVault } from '@/state/VaultProvider';
 import { usePalette } from '@/theme/ThemeProvider';
-import { SPACING } from '@/theme/themes';
+import { RADIUS, SPACING } from '@/theme/themes';
 import { relativeTime } from '@/utils/time';
+import { api } from '@/sync/client';
+import type { PublicUser } from '@/sync/client';
 import type { RegistryEntry } from '@/db/types';
 
 const REACTIONS: { key: string; glyph: string }[] = [
@@ -27,6 +28,41 @@ const REACTIONS: { key: string; glyph: string }[] = [
 
 export default function RegistryScreen() {
   const { registry } = useVault();
+  const palette = usePalette();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [handle, setHandle] = useState('');
+  const [lookupResult, setLookupResult] = useState<PublicUser | null>(null);
+  const [lookupError, setLookupError] = useState('');
+  const [searching, setSearching] = useState(false);
+
+  const filtered = searchQuery.trim()
+    ? registry.filter((e) => {
+        const q = searchQuery.toLowerCase();
+        return (
+          e.author.name.toLowerCase().includes(q) ||
+          e.author.handle.toLowerCase().includes(q) ||
+          e.title.toLowerCase().includes(q)
+        );
+      })
+    : registry;
+
+  const lookupFriend = async () => {
+    const raw = handle.trim();
+    if (!raw) return;
+    const h = raw.startsWith('@') ? raw : `@${raw}`;
+    setSearching(true);
+    setLookupResult(null);
+    setLookupError('');
+    try {
+      const res = await api.lookupUser(h);
+      setLookupResult(res.user);
+    } catch (e: unknown) {
+      setLookupError(e instanceof Error ? e.message : 'Not found');
+    } finally {
+      setSearching(false);
+    }
+  };
 
   return (
     <Screen bottomInset={96}>
@@ -39,21 +75,134 @@ export default function RegistryScreen() {
       </Text>
       <Spacer size={SPACING.xl} />
 
-      {registry.length === 0 ? (
+      {/* Search bar */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          borderWidth: 1,
+          borderColor: palette.border,
+          borderRadius: RADIUS.pill,
+          paddingHorizontal: SPACING.md,
+          paddingVertical: SPACING.sm,
+          backgroundColor: palette.surfaceAlt,
+          marginBottom: SPACING.xl,
+          gap: SPACING.sm,
+        }}
+      >
+        <Text variant="caption" tone="textFaint">◎</Text>
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search quests…"
+          placeholderTextColor={palette.textFaint}
+          style={{ flex: 1, color: palette.text, fontSize: 14 }}
+          returnKeyType="search"
+          autoCorrect={false}
+        />
+        {searchQuery.length > 0 ? (
+          <PressableScale onPress={() => setSearchQuery('')} hapticOnPress="tap" scaleTo={0.9}>
+            <Text variant="caption" tone="textFaint">✕</Text>
+          </PressableScale>
+        ) : null}
+      </View>
+
+      {/* Find a friend */}
+      <Card style={{ marginBottom: SPACING.xl }}>
+        <Eyebrow tone="cool">Find a friend</Eyebrow>
+        <Spacer size={SPACING.sm} />
+        <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+          <TextInput
+            value={handle}
+            onChangeText={setHandle}
+            placeholder="@handle"
+            placeholderTextColor={palette.textFaint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            onSubmitEditing={() => void lookupFriend()}
+            style={{
+              flex: 1,
+              borderWidth: 1,
+              borderColor: palette.border,
+              borderRadius: RADIUS.pill,
+              paddingHorizontal: SPACING.md,
+              paddingVertical: SPACING.sm,
+              color: palette.text,
+              fontSize: 14,
+              backgroundColor: palette.surfaceAlt,
+            }}
+          />
+          <PressableScale onPress={() => void lookupFriend()} hapticOnPress="tap" scaleTo={0.92} disabled={searching}>
+            <View
+              style={{
+                paddingHorizontal: SPACING.lg,
+                paddingVertical: SPACING.sm + 2,
+                borderRadius: RADIUS.pill,
+                backgroundColor: palette.accent,
+              }}
+            >
+              {searching ? (
+                <ActivityIndicator size="small" color={palette.onAccent} />
+              ) : (
+                <Text variant="label" color={palette.onAccent}>Search</Text>
+              )}
+            </View>
+          </PressableScale>
+        </View>
+
+        {lookupError ? (
+          <>
+            <Spacer size={SPACING.sm} />
+            <Text variant="caption" tone="textFaint">{lookupError}</Text>
+          </>
+        ) : null}
+
+        {lookupResult ? (
+          <>
+            <Spacer size={SPACING.md} />
+            <Divider />
+            <Spacer size={SPACING.md} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+              <GlyphChip glyph={lookupResult.avatar || '◈'} size={44} />
+              <View style={{ flex: 1 }}>
+                <Text variant="label">{lookupResult.name}</Text>
+                <Text variant="caption" tone="textFaint">{lookupResult.handle}</Text>
+              </View>
+              <Eyebrow tone="cool">Found</Eyebrow>
+            </View>
+          </>
+        ) : null}
+
+        {!lookupResult && !lookupError && !searching ? (
+          <>
+            <Spacer size={SPACING.sm} />
+            <Text variant="caption" tone="textFaint">
+              Enter a handle like @aria to find a friend's profile.
+            </Text>
+          </>
+        ) : null}
+      </Card>
+
+      {filtered.length === 0 ? (
         <View style={{ alignItems: 'center', paddingTop: SPACING.xxl }}>
           <Text variant="display" tone="textFaint" center>⊚</Text>
           <Spacer size={SPACING.lg} />
-          <Text variant="heading" center>Nothing here yet.</Text>
+          <Text variant="heading" center>
+            {searchQuery ? 'No matches.' : 'Nothing here yet.'}
+          </Text>
           <Spacer size={SPACING.sm} />
           <Text variant="body" tone="textMuted" center>
-            When your crew completes quests, their moments will appear here.
+            {searchQuery
+              ? 'Try a different name or quest title.'
+              : 'When your crew completes quests, their moments will appear here.'}
           </Text>
         </View>
       ) : (
-        registry.map((entry, i) => (
+        filtered.map((entry, i) => (
           <View key={entry.id}>
             <RegistryRow entry={entry} />
-            {i < registry.length - 1 && (
+            {i < filtered.length - 1 && (
               <>
                 <Spacer size={SPACING.lg} />
                 <Divider />
@@ -71,7 +220,6 @@ function RegistryRow({ entry }: { entry: RegistryEntry }) {
   const palette = usePalette();
   const { reactToEntry, cloneEntry } = useVault();
   const [cloned, setCloned] = React.useState(false);
-  // Local optimistic reaction overlay so taps feel instant.
   const [bumps, setBumps] = React.useState<Record<string, number>>({});
 
   const onReact = (key: string) => {
@@ -88,7 +236,6 @@ function RegistryRow({ entry }: { entry: RegistryEntry }) {
 
   return (
     <View>
-      {/* Author */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
         <GlyphChip glyph={entry.author.avatar} size={40} />
         <View style={{ flex: 1 }}>
@@ -105,21 +252,16 @@ function RegistryRow({ entry }: { entry: RegistryEntry }) {
       {entry.subtitle ? (
         <>
           <Spacer size={SPACING.xs} />
-          <Text variant="body" tone="textMuted">
-            {entry.subtitle}
-          </Text>
+          <Text variant="body" tone="textMuted">{entry.subtitle}</Text>
         </>
       ) : null}
       {entry.geoLabel ? (
         <>
           <Spacer size={SPACING.sm} />
-          <Text variant="caption" tone="textFaint">
-            ◍ {entry.geoLabel}
-          </Text>
+          <Text variant="caption" tone="textFaint">◍ {entry.geoLabel}</Text>
         </>
       ) : null}
 
-      {/* Actions */}
       <Spacer size={SPACING.lg} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
         {REACTIONS.map((r) => {
@@ -138,12 +280,8 @@ function RegistryRow({ entry }: { entry: RegistryEntry }) {
                   borderColor: palette.border,
                 }}
               >
-                <Text variant="label" tone="accent">
-                  {r.glyph}
-                </Text>
-                <Text variant="caption" tone="textMuted">
-                  {count}
-                </Text>
+                <Text variant="label" tone="accent">{r.glyph}</Text>
+                <Text variant="caption" tone="textMuted">{count}</Text>
               </View>
             </PressableScale>
           );
