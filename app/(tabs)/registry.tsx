@@ -20,13 +20,13 @@ const REACTIONS: { key: string; glyph: string }[] = [
 ];
 
 export default function RegistryScreen() {
-  const { registry } = useVault();
+  const { registry, refresh, syncNow } = useVault();
   const palette = usePalette();
   const [searchOpen, setSearchOpen] = useState(false);
 
   return (
     <View style={{ flex: 1 }}>
-      <Screen bottomInset={96}>
+      <Screen bottomInset={96} onRefresh={async () => { await syncNow(); await refresh(); }}>
         <Eyebrow>QuestPic · Registry</Eyebrow>
         <Spacer size={SPACING.sm} />
         <Text variant="display">The feed.</Text>

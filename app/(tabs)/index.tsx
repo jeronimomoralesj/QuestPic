@@ -32,7 +32,7 @@ function greeting(): string {
 
 export default function VaultScreen() {
   const palette = usePalette();
-  const { lists, items, completedCount, ready, itemsInList } = useVault();
+  const { lists, items, completedCount, ready, itemsInList, refresh, syncNow } = useVault();
 
   const worldMapItem = useMemo(
     () => items.find((i) => i.template === 'travel-map') ?? null,
@@ -55,7 +55,7 @@ export default function VaultScreen() {
   const progress = regularCount === 0 ? 0 : completedCount / regularCount;
 
   return (
-    <Screen bottomInset={96}>
+    <Screen bottomInset={96} onRefresh={async () => { await syncNow(); await refresh(); }}>
       {/* Masthead */}
       <Eyebrow>QuestPic · The Vault</Eyebrow>
       <Spacer size={SPACING.sm} />

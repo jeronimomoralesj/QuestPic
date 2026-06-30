@@ -7,9 +7,9 @@
  */
 
 import React from 'react';
-import { ScrollView, StyleProp, View, ViewStyle } from 'react-native';
+import { RefreshControl, ScrollView, StyleProp, View, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ThemedRoot } from '@/theme/ThemeProvider';
+import { ThemedRoot, usePalette } from '@/theme/ThemeProvider';
 import { SPACING } from '@/theme/themes';
 import { useDynamicType } from '@/theme/useDynamicType';
 
@@ -22,6 +22,8 @@ interface ScreenProps {
   contentStyle?: StyleProp<ViewStyle>;
   /** Disable horizontal gutters for edge-to-edge screens (e.g. Spark Deck). */
   bleed?: boolean;
+  /** Pull-to-refresh callback. Showing a spinner until the promise resolves. */
+  onRefresh?: () => Promise<void> | void;
 }
 
 export function Screen({
@@ -30,16 +32,29 @@ export function Screen({
   bottomInset = 0,
   contentStyle,
   bleed = false,
+  onRefresh,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
+  const palette = usePalette();
   const { isCompact } = useDynamicType();
   const gutter = bleed ? 0 : isCompact ? SPACING.lg : SPACING.xl;
+  const [refreshing, setRefreshing] = React.useState(false);
 
   const padding: ViewStyle = {
     paddingTop: insets.top + SPACING.sm,
     paddingHorizontal: gutter,
     paddingBottom: insets.bottom + bottomInset + SPACING.xl,
   };
+
+  const handleRefresh = React.useCallback(async () => {
+    if (!onRefresh) return;
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [onRefresh]);
 
   return (
     <ThemedRoot>
@@ -48,6 +63,16 @@ export function Screen({
           contentContainerStyle={[padding, contentStyle]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => void handleRefresh()}
+                tintColor={palette.accent}
+                colors={[palette.accent]}
+              />
+            ) : undefined
+          }
         >
           {children}
         </ScrollView>

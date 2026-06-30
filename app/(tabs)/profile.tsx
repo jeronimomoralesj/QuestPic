@@ -25,11 +25,19 @@ import type { SyncOutcome } from '@/sync/engine';
 export default function ProfileScreen() {
   const palette = usePalette();
   const { themeName, setTheme } = useTheme();
-  const { items, lists, completedCount, crew, sync, syncNow } = useVault();
+  const { items, lists, completedCount, crew, sync, syncNow, refresh } = useVault();
+  const [friendsRefreshKey, setFriendsRefreshKey] = React.useState(0);
   const { user, signOut } = useAuth();
 
   return (
-    <Screen bottomInset={96}>
+    <Screen
+      bottomInset={96}
+      onRefresh={async () => {
+        await syncNow();
+        await refresh();
+        setFriendsRefreshKey((k) => k + 1);
+      }}
+    >
       <Eyebrow>QuestPic · You</Eyebrow>
       <Spacer size={SPACING.sm} />
       <Text variant="display">{user?.name ?? 'Studio'}.</Text>
@@ -61,7 +69,7 @@ export default function ProfileScreen() {
       ) : null}
 
       {/* Friend requests */}
-      {user && <FriendRequests />}
+      {user && <FriendRequests refreshKey={friendsRefreshKey} />}
 
       {/* Stats */}
       <Spacer size={SPACING.xl} />
@@ -260,7 +268,7 @@ function ThemeSwatch({ name, active, onPress }: { name: ThemeName; active: boole
   );
 }
 
-function FriendRequests() {
+function FriendRequests({ refreshKey }: { refreshKey: number }) {
   const palette = usePalette();
   const [invites, setInvites] = useState<FriendInvite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -278,7 +286,7 @@ function FriendRequests() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); }, [load, refreshKey]);
 
   const accept = async (invite: FriendInvite) => {
     setActioning(invite.id);
