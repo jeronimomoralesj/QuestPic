@@ -11,7 +11,7 @@ import { Router, type Response } from 'express';
 import type { Collection as MongoCollection } from 'mongodb';
 import { type AuthedRequest, loginHandler, meHandler, registerHandler, requireAuth } from './auth';
 import { getDb, SYNCED_COLLECTIONS, type SyncedCollection } from './mongo';
-import { toPublicUser, type ListDoc, type SyncDoc, type UserDoc } from './types';
+import { toPublicUser, type FriendshipDoc, type ListDoc, type SyncDoc, type UserDoc } from './types';
 
 interface Tombstone {
   _id: string;
@@ -44,8 +44,9 @@ router.use(requireAuth);
 
 router.get('/me', wrap(meHandler));
 
-/** Look up a user by handle, for invites. */
+/** Look up a user by handle; enriches response with friendship status + mutual friends count. */
 router.get('/users/lookup', async (req: AuthedRequest, res: Response) => {
+  const myId = req.userId!;
   const handle = normalizeHandle(String(req.query.handle ?? ''));
   const db = await getDb();
   const user = await db.collection<UserDoc>('users').findOne({ handle });
@@ -53,7 +54,25 @@ router.get('/users/lookup', async (req: AuthedRequest, res: Response) => {
     res.status(404).json({ ok: false, error: 'No quester with that handle.' });
     return;
   }
-  res.json({ ok: true, user: toPublicUser(user) });
+  const fs = db.collection<FriendshipDoc>('friendships');
+  const friendship = await fs.findOne({
+    $or: [
+      { requesterId: myId, recipientId: user.id },
+      { requesterId: user.id, recipientId: myId },
+    ],
+  });
+  let friendshipStatus: 'none' | 'pending_sent' | 'pending_received' | 'friends' = 'none';
+  let friendshipId: string | undefined;
+  if (friendship) {
+    friendshipId = friendship.id;
+    if (friendship.status === 'accepted') friendshipStatus = 'friends';
+    else if (friendship.requesterId === myId) friendshipStatus = 'pending_sent';
+    else friendshipStatus = 'pending_received';
+  }
+  const myFriendIds = await getFriendIds(db, myId);
+  const theirFriendIds = await getFriendIds(db, user.id);
+  const mutualFriendsCount = myFriendIds.filter((id) => theirFriendIds.includes(id)).length;
+  res.json({ ok: true, user: toPublicUser(user), friendshipStatus, friendshipId, mutualFriendsCount });
 });
 
 /**
@@ -205,6 +224,113 @@ router.delete('/lists/:id/share/:userId', async (req: AuthedRequest, res: Respon
   }
 });
 
+/** Send a friend invite to a user by their userId. */
+router.post('/friends/invite', async (req: AuthedRequest, res: Response) => {
+  try {
+    const myId = req.userId!;
+    const recipientId = String(req.body?.userId ?? '');
+    if (!recipientId || recipientId === myId) {
+      res.status(400).json({ ok: false, error: 'Invalid recipient.' });
+      return;
+    }
+    const db = await getDb();
+    const existing = await db.collection<FriendshipDoc>('friendships').findOne({
+      $or: [
+        { requesterId: myId, recipientId },
+        { requesterId: recipientId, recipientId: myId },
+      ],
+    });
+    if (existing) {
+      res.status(409).json({ ok: false, error: existing.status === 'accepted' ? 'Already friends.' : 'Invite already pending.' });
+      return;
+    }
+    const now = Date.now();
+    const invite: FriendshipDoc = {
+      id: `fs_${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      requesterId: myId,
+      recipientId,
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.collection<FriendshipDoc>('friendships').insertOne(invite);
+    res.json({ ok: true, invite: { id: invite.id } });
+  } catch (err) {
+    res.status(503).json({ ok: false, error: messageOf(err) });
+  }
+});
+
+/** Accept a pending invite (recipient only). */
+router.post('/friends/accept/:id', async (req: AuthedRequest, res: Response) => {
+  try {
+    const myId = req.userId!;
+    const inviteId = req.params.id;
+    const db = await getDb();
+    const result = await db.collection<FriendshipDoc>('friendships').updateOne(
+      { id: inviteId, recipientId: myId, status: 'pending' },
+      { $set: { status: 'accepted', updatedAt: Date.now() } },
+    );
+    if (result.matchedCount === 0) {
+      res.status(404).json({ ok: false, error: 'Invite not found.' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(503).json({ ok: false, error: messageOf(err) });
+  }
+});
+
+/** Cancel or decline an invite (either party). */
+router.delete('/friends/:id', async (req: AuthedRequest, res: Response) => {
+  try {
+    const myId = req.userId!;
+    const inviteId = req.params.id;
+    const db = await getDb();
+    const result = await db.collection<FriendshipDoc>('friendships').deleteOne({
+      id: inviteId,
+      $or: [{ requesterId: myId }, { recipientId: myId }],
+    });
+    if (result.deletedCount === 0) {
+      res.status(404).json({ ok: false, error: 'Invite not found.' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(503).json({ ok: false, error: messageOf(err) });
+  }
+});
+
+/** Get pending invites received by the current user. */
+router.get('/friends/pending', async (req: AuthedRequest, res: Response) => {
+  try {
+    const myId = req.userId!;
+    const db = await getDb();
+    const pending = await db
+      .collection<FriendshipDoc>('friendships')
+      .find({ recipientId: myId, status: 'pending' })
+      .toArray();
+    const requesterIds = pending.map((f) => f.requesterId);
+    const users = await db.collection<UserDoc>('users').find({ id: { $in: requesterIds } }).toArray();
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const invites = pending.map((f) => {
+      const u = userMap.get(f.requesterId);
+      return {
+        id: f.id,
+        requesterId: f.requesterId,
+        requesterHandle: u?.handle ?? '',
+        requesterName: u?.name ?? '',
+        requesterAvatar: u?.avatar ?? '◈',
+        recipientId: f.recipientId,
+        status: f.status,
+        createdAt: f.createdAt,
+      };
+    });
+    res.json({ ok: true, invites });
+  } catch (err) {
+    res.status(503).json({ ok: false, error: messageOf(err) });
+  }
+});
+
 /* ------------------------------------------------------------------ helpers */
 
 /** LWW upsert that refuses to overwrite docs owned by someone else. */
@@ -239,6 +365,14 @@ async function ownedLwwUpsert(
   if (ops.length === 0) return 0;
   const result = await col.bulkWrite(ops, { ordered: false });
   return result.upsertedCount + result.modifiedCount;
+}
+
+async function getFriendIds(db: Awaited<ReturnType<typeof getDb>>, userId: string): Promise<string[]> {
+  const friendships = await db
+    .collection<FriendshipDoc>('friendships')
+    .find({ status: 'accepted', $or: [{ requesterId: userId }, { recipientId: userId }] })
+    .toArray();
+  return friendships.map((f) => (f.requesterId === userId ? f.recipientId : f.requesterId));
 }
 
 function normalizeHandle(raw: string): string {

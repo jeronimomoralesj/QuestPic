@@ -18,6 +18,10 @@ import { usePalette } from '@/theme/ThemeProvider';
 import { SPACING } from '@/theme/themes';
 import type { BucketItem, BucketList } from '@/db/types';
 
+function formatDate(ts: number): string {
+  return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 function greeting(): string {
   const h = new Date().getHours();
   if (h < 5) return 'Still awake';
@@ -30,12 +34,25 @@ export default function VaultScreen() {
   const palette = usePalette();
   const { lists, items, completedCount, ready, itemsInList } = useVault();
 
-  const openItems = useMemo(
-    () => items.filter((i) => i.status === 'open').slice(-6).reverse(),
+  const worldMapItem = useMemo(
+    () => items.find((i) => i.template === 'travel-map') ?? null,
     [items],
   );
-  const total = items.length;
-  const progress = total === 0 ? 0 : completedCount / total;
+
+  const openItems = useMemo(
+    () => items.filter((i) => i.status === 'open' && i.template !== 'travel-map').slice(-6).reverse(),
+    [items],
+  );
+
+  const completedItems = useMemo(
+    () => items
+      .filter((i) => i.status === 'completed')
+      .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0)),
+    [items],
+  );
+
+  const regularCount = items.filter((i) => i.template !== 'travel-map').length;
+  const progress = regularCount === 0 ? 0 : completedCount / regularCount;
 
   return (
     <Screen bottomInset={96}>
@@ -45,14 +62,17 @@ export default function VaultScreen() {
       <Text variant="display">{greeting()}.</Text>
       <Spacer size={SPACING.xs} />
       <Text variant="body" tone="textMuted">
-        {total === 0
+        {regularCount === 0
           ? 'A blank slate. Spark your first quest below.'
-          : `${completedCount} of ${total} quests answered.`}
+          : `${completedCount} of ${regularCount} quests answered.`}
       </Text>
 
       <Spacer size={SPACING.xl} />
       <ProgressLine progress={progress} />
       <Spacer size={SPACING.xxl} />
+
+      {/* World Map pinned card */}
+      {worldMapItem && <WorldMapCard item={worldMapItem} />}
 
       {/* Lists */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -87,7 +107,81 @@ export default function VaultScreen() {
         label="Compose a quest"
         onPress={() => router.push('/compose?mode=item')}
       />
+
+      {completedItems.length > 0 && (
+        <>
+          <Spacer size={SPACING.xxl} />
+          <Eyebrow tone="accent">Answered · {completedItems.length}</Eyebrow>
+          <Spacer size={SPACING.md} />
+          {completedItems.map((item) => <CompletedItemRow key={item.id} item={item} />)}
+        </>
+      )}
     </Screen>
+  );
+}
+
+function WorldMapCard({ item }: { item: BucketItem }) {
+  const palette = usePalette();
+  const visited = (item.travelPins ?? []).filter((p) => p.status === 'visited').length;
+  const want = (item.travelPins ?? []).filter((p) => p.status === 'want').length;
+  return (
+    <PressableScale onPress={() => router.push(`/item/${item.id}`)} hapticOnPress="tap" scaleTo={0.98}>
+      <View
+        style={{
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: palette.cool,
+          backgroundColor: palette.cool + '11',
+          padding: SPACING.lg,
+          marginBottom: SPACING.xl,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: SPACING.lg,
+        }}
+      >
+        <Text variant="display" color={palette.cool} style={{ fontSize: 28 }}>◍</Text>
+        <View style={{ flex: 1 }}>
+          <Text variant="label" color={palette.cool}>{item.title}</Text>
+          <Text variant="caption" tone="textFaint">{visited} visited · {want} want to go</Text>
+        </View>
+        <Text variant="heading" tone="textFaint">›</Text>
+      </View>
+    </PressableScale>
+  );
+}
+
+function CompletedItemRow({ item }: { item: BucketItem }) {
+  const palette = usePalette();
+  return (
+    <Card onPress={() => router.push(`/item/${item.id}`)} style={{ marginBottom: SPACING.md }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+        <View
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 11,
+            backgroundColor: palette.success,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Text variant="caption" color={palette.onAccent}>✓</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          {item.category ? (
+            <Text variant="caption" tone="accent" style={{ textTransform: 'uppercase', letterSpacing: 1 }}>
+              {item.category}
+            </Text>
+          ) : null}
+          <Text variant="heading" tone="textFaint" style={{ textDecorationLine: 'line-through' }}>{item.title}</Text>
+          {item.completedAt ? (
+            <Text variant="caption" color={palette.success}>{formatDate(item.completedAt)}</Text>
+          ) : null}
+        </View>
+        <Text variant="heading" tone="textFaint">›</Text>
+      </View>
+    </Card>
   );
 }
 

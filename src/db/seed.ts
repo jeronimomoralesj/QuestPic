@@ -1,5 +1,5 @@
-import { initCollections, registry } from './repositories';
-import type { Collaborator, SparkCard } from './types';
+import { initCollections, items, registry } from './repositories';
+import type { BucketItem, Collaborator, SparkCard } from './types';
 
 export const CREW: Collaborator[] = [
   { id: 'cr_aria', handle: '@aria', name: 'Aria Voss', avatar: '🜂' },
@@ -86,5 +86,22 @@ export async function seedIfEmpty(): Promise<void> {
   // Purge legacy dummy registry entries from older seed versions
   for (const id of ['re_1', 're_2', 're_3']) {
     await registry.remove(id).catch(() => {});
+  }
+  // Ensure the permanent world map item exists
+  const existing = await items.all();
+  if (!existing.some((i) => i.template === 'travel-map')) {
+    const now = Date.now();
+    await items.insert({
+      id: 'item_world_map',
+      title: 'My World Map',
+      subtitle: 'Track every country — visited and on the list',
+      category: 'Travel',
+      template: 'travel-map',
+      status: 'open',
+      listIds: [],
+      travelPins: [],
+      createdAt: now,
+      updatedAt: now,
+    } as BucketItem);
   }
 }

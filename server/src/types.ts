@@ -39,3 +39,12 @@ export interface ListDoc extends SyncDoc {
 export interface ItemDoc extends SyncDoc {
   listIds?: string[];
 }
+
+export interface FriendshipDoc {
+  id: string;
+  requesterId: string;
+  recipientId: string;
+  status: 'pending' | 'accepted';
+  createdAt: number;
+  updatedAt: number;
+}

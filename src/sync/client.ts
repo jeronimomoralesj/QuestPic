@@ -40,6 +40,20 @@ export interface PublicUser {
   handle: string;
   name: string;
   avatar: string;
+  friendshipStatus?: 'none' | 'pending_sent' | 'pending_received' | 'friends';
+  friendshipId?: string;
+  mutualFriendsCount?: number;
+}
+
+export interface FriendInvite {
+  id: string;
+  requesterId: string;
+  requesterHandle: string;
+  requesterName: string;
+  requesterAvatar: string;
+  recipientId: string;
+  status: 'pending' | 'accepted';
+  createdAt: number;
 }
 
 export interface PullResponse {
@@ -108,7 +122,7 @@ export const api = {
 
   // Sharing (auth required)
   lookupUser: (handle: string) =>
-    request<{ ok: boolean; user: PublicUser }>(
+    request<{ ok: boolean; user: PublicUser; friendshipStatus?: string; friendshipId?: string; mutualFriendsCount?: number }>(
       `/api/users/lookup?handle=${encodeURIComponent(handle)}`,
     ),
   shareList: (listId: string, handle: string) =>
@@ -118,4 +132,17 @@ export const api = {
     }),
   unshareList: (listId: string, userId: string) =>
     request<{ ok: boolean }>(`/api/lists/${listId}/share/${userId}`, { method: 'DELETE' }),
+
+  // Friends (auth required)
+  sendFriendInvite: (userId: string) =>
+    request<{ ok: boolean; invite: { id: string } }>('/api/friends/invite', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
+  acceptFriendInvite: (inviteId: string) =>
+    request<{ ok: boolean }>(`/api/friends/accept/${inviteId}`, { method: 'POST' }),
+  declineFriendInvite: (inviteId: string) =>
+    request<{ ok: boolean }>(`/api/friends/${inviteId}`, { method: 'DELETE' }),
+  getPendingInvites: () =>
+    request<{ ok: boolean; invites: FriendInvite[] }>('/api/friends/pending'),
 };

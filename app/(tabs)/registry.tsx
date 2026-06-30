@@ -70,7 +70,7 @@ export default function RegistryScreen() {
         scaleTo={0.92}
         style={{
           position: 'absolute',
-          bottom: 108,
+          bottom: 144,
           right: 20,
         }}
       >
@@ -117,6 +117,7 @@ function SearchOverlay({
   const [lookupError, setLookupError] = useState('');
   const [looking, setLooking] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -126,6 +127,16 @@ function SearchOverlay({
       setTimeout(() => inputRef.current?.focus(), 200);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const raw = query.trim();
+    if (raw.length >= 3) {
+      debounceRef.current = setTimeout(() => void lookupFriend(), 400);
+    }
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   const feedResults = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -147,10 +158,15 @@ function SearchOverlay({
     setLookupError('');
     try {
       const res = await api.lookupUser(h);
-      setLookupResult(res.user);
+      setLookupResult({
+        ...res.user,
+        friendshipStatus: res.friendshipStatus as PublicUser['friendshipStatus'],
+        friendshipId: res.friendshipId,
+        mutualFriendsCount: res.mutualFriendsCount,
+      });
       await haptic.success();
     } catch {
-      setLookupError('No quester found — try @theirhandle exactly.');
+      setLookupError('No quester found. Try searching by @handle or part of their name.');
       await haptic.warning();
     } finally {
       setLooking(false);
@@ -214,8 +230,13 @@ function SearchOverlay({
                       <View style={{ flex: 1 }}>
                         <Text variant="label">{lookupResult.name}</Text>
                         <Text variant="caption" tone="textFaint">{lookupResult.handle}</Text>
+                        {(lookupResult.mutualFriendsCount ?? 0) > 0 && (
+                          <Text variant="caption" tone="cool">
+                            ◉ {lookupResult.mutualFriendsCount} friend{lookupResult.mutualFriendsCount === 1 ? '' : 's'} in common
+                          </Text>
+                        )}
                       </View>
-                      <Eyebrow tone="cool">Found ✓</Eyebrow>
+                      <FriendInviteButton user={lookupResult} onUpdate={(u) => setLookupResult(u)} />
                     </View>
                   </Card>
                 )}
@@ -248,28 +269,84 @@ function SearchOverlay({
             ))}
 
             {query.trim().length === 0 && (
-              <>
-                <Eyebrow>Suggestions</Eyebrow>
-                <Spacer size={SPACING.md} />
-                {['@aria', '@marco', '@yuki', '@dev'].map((h) => (
-                  <PressableScale
-                    key={h}
-                    onPress={() => { setQuery(h); inputRef.current?.focus(); }}
-                    hapticOnPress="select"
-                    scaleTo={0.98}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.md, borderBottomWidth: 1, borderColor: palette.border }}>
-                      <GlyphChip glyph="◈" size={36} />
-                      <Text variant="body" tone="textMuted">{h}</Text>
-                    </View>
-                  </PressableScale>
-                ))}
-              </>
+              <View style={{ paddingTop: SPACING.md }}>
+                <Text variant="caption" tone="textFaint">
+                  Search by @handle or name. Results appear as you type.
+                </Text>
+                <Spacer size={SPACING.sm} />
+                <Text variant="caption" tone="textFaint">
+                  Friend requests stay private — nobody can see your connections.
+                </Text>
+              </View>
             )}
           </ScrollView>
         </SafeAreaView>
       </View>
     </Modal>
+  );
+}
+
+function FriendInviteButton({
+  user,
+  onUpdate,
+}: {
+  user: PublicUser;
+  onUpdate: (u: PublicUser) => void;
+}) {
+  const palette = usePalette();
+  const [busy, setBusy] = useState(false);
+  const status = user.friendshipStatus ?? 'none';
+
+  const handlePress = async () => {
+    setBusy(true);
+    try {
+      if (status === 'none') {
+        const res = await api.sendFriendInvite(user.id);
+        onUpdate({ ...user, friendshipStatus: 'pending_sent', friendshipId: res.invite.id });
+        await haptic.success();
+      } else if (status === 'pending_sent' && user.friendshipId) {
+        await api.declineFriendInvite(user.friendshipId);
+        onUpdate({ ...user, friendshipStatus: 'none', friendshipId: undefined });
+        await haptic.tap();
+      } else if (status === 'pending_received' && user.friendshipId) {
+        await api.acceptFriendInvite(user.friendshipId);
+        onUpdate({ ...user, friendshipStatus: 'friends' });
+        await haptic.success();
+      }
+    } catch {
+      await haptic.warning();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (status === 'friends') {
+    return (
+      <View style={{ paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.pill, backgroundColor: palette.success + '22', borderWidth: 1, borderColor: palette.success }}>
+        <Text variant="caption" color={palette.success}>◉ Friends</Text>
+      </View>
+    );
+  }
+
+  const label =
+    status === 'pending_sent' ? 'Cancel invite' :
+    status === 'pending_received' ? 'Accept' :
+    'Send invite';
+  const borderColor =
+    status === 'pending_sent' ? palette.warm :
+    status === 'pending_received' ? palette.success :
+    palette.cool;
+  const textColor =
+    status === 'pending_sent' ? palette.warm :
+    status === 'pending_received' ? palette.success :
+    palette.cool;
+
+  return (
+    <PressableScale onPress={() => void handlePress()} disabled={busy} hapticOnPress="none" scaleTo={0.94}>
+      <View style={{ paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.pill, borderWidth: 1, borderColor, opacity: busy ? 0.5 : 1 }}>
+        <Text variant="caption" color={textColor}>{label}</Text>
+      </View>
+    </PressableScale>
   );
 }
 

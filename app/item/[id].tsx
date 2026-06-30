@@ -81,18 +81,20 @@ export default function ItemDetailScreen() {
               ‹ Back
             </Text>
           </PressableScale>
-          <PressableScale
-            onPress={async () => {
-              await haptic.warning();
-              await vault.deleteItem(item.id);
-              router.back();
-            }}
-            hapticOnPress="none"
-          >
-            <Text variant="caption" tone="textFaint">
-              Delete
-            </Text>
-          </PressableScale>
+          {item.template !== 'travel-map' && (
+            <PressableScale
+              onPress={async () => {
+                await haptic.warning();
+                await vault.deleteItem(item.id);
+                router.back();
+              }}
+              hapticOnPress="none"
+            >
+              <Text variant="caption" tone="textFaint">
+                Delete
+              </Text>
+            </PressableScale>
+          )}
         </View>
 
         <Spacer size={SPACING.xl} />
@@ -110,21 +112,27 @@ export default function ItemDetailScreen() {
 
         {/* Status badge */}
         <Spacer size={SPACING.lg} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-          <View
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: completed ? palette.success : palette.warm,
-            }}
-          />
-          <Text variant="caption" color={completed ? palette.success : palette.warm}>
-            {completed
-              ? `Answered ${item.completedAt ? formatDate(item.completedAt) : ''}`
-              : 'Open quest'}
-          </Text>
-        </View>
+        {item.template === 'travel-map' ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+            <Text variant="caption" color={palette.cool}>◍ Permanent quest — your living map</Text>
+          </View>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: completed ? palette.success : palette.warm,
+              }}
+            />
+            <Text variant="caption" color={completed ? palette.success : palette.warm}>
+              {completed
+                ? `Answered ${item.completedAt ? formatDate(item.completedAt) : ''}`
+                : 'Open quest'}
+            </Text>
+          </View>
+        )}
 
         <Spacer size={SPACING.xl} />
         <Divider />
@@ -154,85 +162,87 @@ export default function ItemDetailScreen() {
           </>
         )}
 
-        {completed ? (
-          /* ---------- The Memory Studio ---------- */
-          <View>
-            <Card bordered style={{ borderColor: palette.success }}>
-              <Text variant="eyebrow" color={palette.success} style={{ textTransform: 'uppercase' }}>
-                Memory Studio · Unlocked
-              </Text>
-              <Spacer size={SPACING.sm} />
+        {item.template !== 'travel-map' && (
+          completed ? (
+            /* ---------- The Memory Studio ---------- */
+            <View>
+              <Card bordered style={{ borderColor: palette.success }}>
+                <Text variant="eyebrow" color={palette.success} style={{ textTransform: 'uppercase' }}>
+                  Memory Studio · Unlocked
+                </Text>
+                <Spacer size={SPACING.sm} />
+                <Text variant="body" tone="textMuted">
+                  The quest is answered. Capture how it felt.
+                </Text>
+              </Card>
+
+              <Spacer size={SPACING.xl} />
+              <PhotoJournal
+                photos={memory.photos}
+                onAdd={(photo) => vault.addPhoto(item.id, photo)}
+                onRemove={(photoId) => vault.removePhoto(item.id, photoId)}
+              />
+
+              <Spacer size={SPACING.xxl} />
+              <GeoPinpoint pin={memory.geo} onDrop={(geo) => vault.setGeoPin(item.id, geo)} />
+
+              <Spacer size={SPACING.xxl} />
+              <CrewTagging
+                crew={vault.crew}
+                taggedIds={memory.crew}
+                onToggle={(cid) => vault.toggleCrew(item.id, cid)}
+              />
+
+              <Spacer size={SPACING.xxl} />
+              <Eyebrow>Reflection</Eyebrow>
+              <Spacer size={SPACING.md} />
+              <TextInput
+                value={note}
+                onChangeText={setNote}
+                onBlur={saveNote}
+                placeholder="What will you remember about this?"
+                placeholderTextColor={palette.textFaint}
+                multiline
+                style={{
+                  color: palette.text,
+                  fontSize: 16,
+                  lineHeight: 23,
+                  minHeight: 90,
+                  padding: SPACING.lg,
+                  borderRadius: RADIUS.lg,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  backgroundColor: palette.surface,
+                  textAlignVertical: 'top',
+                }}
+              />
+
+              <Spacer size={SPACING.xxl} />
+              <Button
+                label="✦  Done — save & go back"
+                tone="success"
+                onPress={() => {
+                  void vault.setMemoryNote(item.id, note);
+                  void haptic.success();
+                  router.back();
+                }}
+              />
+              <Spacer size={SPACING.md} />
+              <Button label="Reopen this quest" tone="warm" variant="outline" onPress={onReopen} />
+            </View>
+          ) : (
+            /* ---------- The Achievement trigger ---------- */
+            <View>
+              <Eyebrow>The Achievement Canvas</Eyebrow>
+              <Spacer size={SPACING.md} />
               <Text variant="body" tone="textMuted">
-                The quest is answered. Capture how it felt.
+                Mark this done to unlock the Memory Studio — photos, a geo-pin, your
+                crew, and a note.
               </Text>
-            </Card>
-
-            <Spacer size={SPACING.xl} />
-            <PhotoJournal
-              photos={memory.photos}
-              onAdd={(photo) => vault.addPhoto(item.id, photo)}
-              onRemove={(photoId) => vault.removePhoto(item.id, photoId)}
-            />
-
-            <Spacer size={SPACING.xxl} />
-            <GeoPinpoint pin={memory.geo} onDrop={(geo) => vault.setGeoPin(item.id, geo)} />
-
-            <Spacer size={SPACING.xxl} />
-            <CrewTagging
-              crew={vault.crew}
-              taggedIds={memory.crew}
-              onToggle={(cid) => vault.toggleCrew(item.id, cid)}
-            />
-
-            <Spacer size={SPACING.xxl} />
-            <Eyebrow>Reflection</Eyebrow>
-            <Spacer size={SPACING.md} />
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              onBlur={saveNote}
-              placeholder="What will you remember about this?"
-              placeholderTextColor={palette.textFaint}
-              multiline
-              style={{
-                color: palette.text,
-                fontSize: 16,
-                lineHeight: 23,
-                minHeight: 90,
-                padding: SPACING.lg,
-                borderRadius: RADIUS.lg,
-                borderWidth: 1,
-                borderColor: palette.border,
-                backgroundColor: palette.surface,
-                textAlignVertical: 'top',
-              }}
-            />
-
-            <Spacer size={SPACING.xxl} />
-            <Button
-              label="✦  Done — save & go back"
-              tone="success"
-              onPress={() => {
-                void vault.setMemoryNote(item.id, note);
-                void haptic.success();
-                router.back();
-              }}
-            />
-            <Spacer size={SPACING.md} />
-            <Button label="Reopen this quest" tone="warm" variant="outline" onPress={onReopen} />
-          </View>
-        ) : (
-          /* ---------- The Achievement trigger ---------- */
-          <View>
-            <Eyebrow>The Achievement Canvas</Eyebrow>
-            <Spacer size={SPACING.md} />
-            <Text variant="body" tone="textMuted">
-              Mark this done to unlock the Memory Studio — photos, a geo-pin, your
-              crew, and a note.
-            </Text>
-            <Spacer size={SPACING.xl} />
-            <Button label="✦  Complete this quest" tone="success" hapticOnPress="heavy" onPress={onComplete} />
-          </View>
+              <Spacer size={SPACING.xl} />
+              <Button label="✦  Complete this quest" tone="success" hapticOnPress="heavy" onPress={onComplete} />
+            </View>
+          )
         )}
       </Screen>
 

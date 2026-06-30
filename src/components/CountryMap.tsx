@@ -257,24 +257,33 @@ export function CountryMap({
 
   const mapHeight = mapWidth * MAP_ASPECT;
 
-  const toggle = (iso: string, name: string) => {
-    const current = pinMap.get(iso);
-    const filtered = pins.filter((p) => p.iso !== iso);
-    let next: CountryPin[];
-    if (!current) {
-      next = [...filtered, { iso, country: name, status: 'want' }];
-    } else if (current.status === 'want') {
-      next = [...filtered, { iso, country: name, status: 'visited', photos: current.photos }];
+  const openCountry = (iso: string, name: string) => {
+    const existing = pinMap.get(iso);
+    if (existing) {
+      setModalPin({ ...existing, photos: existing.photos ? [...existing.photos] : [] });
     } else {
-      next = filtered;
+      const newPin: CountryPin = { iso, country: name, status: 'want', photos: [] };
+      onUpdate([...pins, newPin]);
+      setModalPin(newPin);
     }
-    onUpdate(next);
+    void haptic.tap();
+  };
+
+  const setModalStatus = (status: 'want' | 'visited') => {
+    if (!modalPin) return;
+    const updated: CountryPin = { ...modalPin, status, photos: status === 'want' ? [] : modalPin.photos };
+    setModalPin(updated);
+    onUpdate(pins.map((p) => (p.iso === updated.iso ? updated : p)).concat(
+      pins.find((p) => p.iso === updated.iso) ? [] : [updated],
+    ));
     void haptic.select();
   };
 
-  const openPhotos = (pin: CountryPin) => {
-    setModalPin({ ...pin, photos: pin.photos ? [...pin.photos] : [] });
-    void haptic.tap();
+  const removeCountry = () => {
+    if (!modalPin) return;
+    onUpdate(pins.filter((p) => p.iso !== modalPin.iso));
+    setModalPin(null);
+    void haptic.warning();
   };
 
   const closeModal = () => {
@@ -424,7 +433,7 @@ export function CountryMap({
 
       {/* Hint */}
       <Text variant="caption" tone="textFaint" style={{ marginBottom: SPACING.xl }}>
-        Tap → want · tap again → visited · tap again → remove · long-press visited to add photos
+        Tap any country to open its Memory Vault
       </Text>
 
       {/* Continent chip grids */}
@@ -446,8 +455,7 @@ export function CountryMap({
               return (
                 <PressableScale
                   key={c.iso}
-                  onPress={() => toggle(c.iso, c.name)}
-                  onLongPress={isVisited ? () => openPhotos(pin!) : undefined}
+                  onPress={() => openCountry(c.iso, c.name)}
                   hapticOnPress="none"
                   scaleTo={0.9}
                 >
@@ -537,55 +545,110 @@ export function CountryMap({
           </View>
 
           <ScrollView contentContainerStyle={{ padding: SPACING.lg }}>
-            <Text variant="eyebrow" tone="cool" style={{ marginBottom: SPACING.md }}>
-              Photos from {modalPin?.country}
-            </Text>
-
-            {/* Photo grid */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
-              {(modalPin?.photos ?? []).map((p) => (
-                <PressableScale
-                  key={p.id}
-                  onPress={() => removePhoto(p.id)}
-                  hapticOnPress="none"
-                  scaleTo={0.92}
+            {/* Status buttons */}
+            <View style={{ marginBottom: SPACING.sm }}><Eyebrow>Status</Eyebrow></View>
+            <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xl }}>
+              <PressableScale
+                onPress={() => setModalStatus('want')}
+                hapticOnPress="none"
+                scaleTo={0.94}
+              >
+                <View
+                  style={{
+                    paddingHorizontal: SPACING.lg,
+                    paddingVertical: SPACING.sm,
+                    borderRadius: RADIUS.pill,
+                    borderWidth: 1,
+                    borderColor: palette.cool,
+                    backgroundColor: modalPin?.status === 'want' ? palette.cool + '33' : 'transparent',
+                  }}
                 >
-                  <Image
-                    source={{ uri: `data:${p.mime};base64,${p.base64}` }}
-                    style={{
-                      width: 100,
-                      height: 100,
-                      borderRadius: RADIUS.md,
-                      borderWidth: 1,
-                      borderColor: palette.border,
-                    }}
-                  />
-                </PressableScale>
-              ))}
-
-              {/* Add photo tiles */}
-              <PhotoAddTile
-                glyph="◎"
-                label="Camera"
-                onPress={() => void pickPhoto('camera')}
-                disabled={busy}
-              />
-              <PhotoAddTile
-                glyph="⊞"
-                label="Library"
-                onPress={() => void pickPhoto('library')}
-                disabled={busy}
-              />
+                  <Text variant="label" color={palette.cool}>◯ Want to go</Text>
+                </View>
+              </PressableScale>
+              <PressableScale
+                onPress={() => setModalStatus('visited')}
+                hapticOnPress="none"
+                scaleTo={0.94}
+              >
+                <View
+                  style={{
+                    paddingHorizontal: SPACING.lg,
+                    paddingVertical: SPACING.sm,
+                    borderRadius: RADIUS.pill,
+                    borderWidth: 1,
+                    borderColor: palette.success,
+                    backgroundColor: modalPin?.status === 'visited' ? palette.success + '33' : 'transparent',
+                  }}
+                >
+                  <Text variant="label" color={palette.success}>◍ Visited</Text>
+                </View>
+              </PressableScale>
+              <PressableScale onPress={removeCountry} hapticOnPress="none" scaleTo={0.94}>
+                <View
+                  style={{
+                    paddingHorizontal: SPACING.lg,
+                    paddingVertical: SPACING.sm,
+                    borderRadius: RADIUS.pill,
+                    borderWidth: 1,
+                    borderColor: palette.border,
+                  }}
+                >
+                  <Text variant="label" tone="textFaint">Remove</Text>
+                </View>
+              </PressableScale>
             </View>
 
-            {(modalPin?.photos ?? []).length === 0 ? (
+            {/* Photos — only when visited */}
+            {modalPin?.status === 'visited' && (
               <>
-                <Spacer size={SPACING.sm} />
-                <Text variant="caption" tone="textFaint">
-                  Add photos from this country. Tap a photo to remove it.
-                </Text>
+                <View style={{ marginBottom: SPACING.md }}><Eyebrow tone="cool">Photos from {modalPin?.country}</Eyebrow></View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
+                  {(modalPin?.photos ?? []).map((p) => (
+                    <PressableScale
+                      key={p.id}
+                      onPress={() => removePhoto(p.id)}
+                      hapticOnPress="none"
+                      scaleTo={0.92}
+                    >
+                      <Image
+                        source={{ uri: `data:${p.mime};base64,${p.base64}` }}
+                        style={{
+                          width: 100,
+                          height: 100,
+                          borderRadius: RADIUS.md,
+                          borderWidth: 1,
+                          borderColor: palette.border,
+                        }}
+                      />
+                    </PressableScale>
+                  ))}
+
+                  <PhotoAddTile
+                    glyph="◎"
+                    label="Camera"
+                    onPress={() => void pickPhoto('camera')}
+                    disabled={busy}
+                  />
+                  <PhotoAddTile
+                    glyph="⊞"
+                    label="Library"
+                    onPress={() => void pickPhoto('library')}
+                    disabled={busy}
+                  />
+                </View>
+
+                {(modalPin?.photos ?? []).length === 0 ? (
+                  <>
+                    <Spacer size={SPACING.sm} />
+                    <Text variant="caption" tone="textFaint">
+                      Add photos from {modalPin?.country}. Tap a photo to remove it.
+                    </Text>
+                  </>
+                ) : null}
               </>
-            ) : null}
+            )}
           </ScrollView>
         </View>
       </Modal>
